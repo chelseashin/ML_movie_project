@@ -1,0 +1,1150 @@
+---
+title: "A Study on Korea Box office Prediction <br>
+through Data Crawling and Regression Analysis <br>
+of NAVER MOVIE site"
+
+author: "BuBigata"
+date: "2018년 8월 10일"
+output: html_document
+---
+<style>
+body{
+  font-family: nanumsquare;
+  font-size: 15px;
+  line-height: 15px;
+}
+</style>
+## Project title :
+## **네이버 영화 사이트 주제별 크롤링 및 회귀분석을 통한 영화 흥행도 예측**
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r echo=FALSE}
+movies <- read.csv(file = "moviesfinal0809.csv")
+movies1 <- read.csv(file = "movies20052009.csv")
+library(car)
+```
+<br>
+
+## *Contents*
+### 1. Purpose of Study
+### 2. Exploratory Data Analysis
+#### 변수 정의 / 데이터 획득 및 전처리 과정 / Crawling 사용 코드
+### 3. After First Crawling
+### 4. After Second Crawling
+### 5. Ensemble Model
+### 6. Conclusion
+
+<br>
+
+## **1. 연구 목적(Purpose of Study)**
+###  본 연구는 2010년부터 2018년 상반기까지의 개봉된 한국 영화의 데이터 분석을 바탕으로 <br> **<span style="color:red">영화의 흥행 정도</span>** 를 예측해보고자 한다. 연구 대상은 위키피디아에서 2010년 1월 1일부터 2015년 12월 31일까지 개봉한 한국 영화 제목 목록으로 선정하였다. 획득한 총 849개의 영화 제목 데이터를 바탕으로 국내 최대 포털 사이트인 네이버(Naver)의 메인 홈페이지(https://www.naver.com)에서의 검색과 네이버 영화 사이트(https://movie.naver.com)에서 각 영화의 기본 정보를 R에서의 for문을 통해 스크래핑(Scraping)하였다. 이들의 과거 8년 6개월치의 누적된 데이터를 분석하여 미래에 개봉할 영화들의 흥행 정도를 예측해보았다. 본 연구의 목적은 실제 영화의 흥행 성적과 예측한 값과의 차이를 최소화하는 데에 있다.
+
+### 본 연구는 예측의 정확도 높이기 위해 *[Naver Movie](https://movie.naver.com)* 에서 7가지의 변수를 찾아내었다. 스크래핑(Scraping)한 4개의 변수와 새로이 만들어낸 3가지의 변수를 사용하여 실제 관객 수(performance)의 상관도를 분석하였다. <br>
+###  본 연구에서 사용한 방법은 **<span style="color:blue">회귀분석(Regression Analysis)</span>**이며 이를 통해 결정계수(R^값)를 높이고자 하였다.
+
+
+
+## **2. EDA (Exploratory Data Analysis)**
+### (1) 영화의 기본 변수 정의 및 데이터 추출
+###  i. 변수 정의
+<br>
+* title        : 영화 제목
+* distributor  : 영화 배급사 
+* performance  : 실제 관객수(흥행 정도)
+* genre        : 장르(SF, 공포/스릴러, 다큐멘터리, 드라마, 멜로/로맨스, 뮤지컬, 범죄, 애니메이션, 액션, 코미디)
+* release_time : 개봉일
+* time         : 상영시간
+* rat_mpaa     : 상영등급(12세 관람가, 15세 관람가, 전체 관람가, 청소년 관람불가)
+* director     : 감독
+* contents     : 내용
+
+
+### ii. 데이터 전처리(Preprocess of Data)
+### 데이터 획득 화면
+![<Movies Information in NAVER](C:/Users/kmlam/Documents/work/all (1)/image03.png)
+
+
+![<Movies Information in NAVER MOVIE](C:/Users/kmlam/Documents/work/all (1)/image04.png)
+
+
+
+### csv 형태로 정리한 파일은 다음과 같다.
+![<Movies Information saved by csv file>](C:/Users/kmlam/Documents/work/all (1)/image01.png)
+
+
+### iii. 데이터 추출시 사용 코드 
+```{r eval=FALSE}
+for(i in 1:length(movieslist)){
+  remdir$navigate("https://www.naver.com/")
+  sbox <- remdir$findElement(using = 'xpath','//*[@id="query"]')
+  
+  sbox$sendKeysToElement(list(movielist[i], key = "enter"))
+  sbox<-NA
+  
+  try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")}, silent = T)
+  if(is.na(sbox)){
+    sbox <- remdir$findElement(using = 'css selector',"strong.info_title a")
+    sbox$clickElement()
+  }
+  if(is.na(sbox)){next}
+  
+  url<-remdir$getCurrentUrl()[[1]]
+  webpage<-read_html(url)
+  
+  newperformance<-webpage %>% 
+    html_node(xpath = '//*[@id="_au_movie_info"]/div[2]/dl[2]/dd[4]/span') %>% 
+    html_text(trim = T)
+  
+  newperformance <- ifelse(is.na(newperformance),
+                           webpage %>% 
+                             html_node(xpath ='//*[@id="_au_movie_info"]/div[2]/dl[2]/dd[3]/span') %>% 
+                             html_text(trim = T),
+                           newperformance)
+  newperformance <- ifelse(is.na(newperformance),
+                           webpage %>% 
+                             html_node(xpath = '//*[@id="_au_movie_info"]/div[2]/dl/dd[4]/span') %>% 
+                             html_text(trim = T),
+                           newperformance)
+  newperformance <- ifelse(is.na(newperformance),
+                           webpage %>% 
+                             html_node(xpath = '//*[@id="_au_movie_info"]/div[2]/dl/dd[3]/span') %>% 
+                             html_text(trim = T),
+                           newperformance)
+  
+  newrelease_date <- webpage %>% 
+    html_node(xpath = '//*[@id="dss_h_movie_info_opendate_content"]') %>% 
+    html_text(trim = T)
+  
+  newdirector <- webpage %>%
+    html_node(xpath = '//*[@id="dss_h_movie_info_director_content"]/a') %>% 
+    html_text(trim = T)
+  
+  newmpaa_rating <- webpage %>% 
+    html_node(xpath = '//*[@id="dss_h_movie_info_grade_content"]') %>% 
+    html_text(trim = T)
+  newmpaa_rating <- ifelse(is.na(newmpaa_rating),"청소년 관람불가",newmpaa_rating)
+  
+  sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")
+  remdir$executeScript("arguments[0].setAttribute('target', arguments[1]);", list(sbox, ""))
+  sbox$clickElement()
+  
+  url <- remdir$getCurrentUrl()[[1]]
+  webpage <- read_html(url)
+  
+  newgenre <- webpage %>%
+    html_node(xpath = '//*[@id="content"]/div[1]/div[2]/div[1]/dl/dd[1]/p/span[1]/a') %>% 
+    html_text(trim = T)
+  
+  newtime <- webpage %>% 
+    html_node(xpath = '//*[@id="content"]/div[1]/div[2]/div[1]/dl/dd[1]/p/span[3]') %>% 
+    html_text(trim = T)
+  
+  
+  newcontents <- (webpage %>% html_node(".con_tx") %>% html_text())[[1]][1]
+  
+  newtitle <- movieslist[i]  
+  newlabel <- i
+  
+  sbox <- remdir$findElement(using = 'css selector',".tab05_off")
+  sbox$clickElement()
+  
+  sbox <- remdir$findElement(using = 'id',"beforePointTab")
+  sbox$clickElement()
+  
+  url <- remdir$getCurrentUrl()[[1]]
+  webpage <- read_html(url)
+  newinterest_before <- (webpage %>% 
+                           html_nodes(xpath = '//*[@id="beforePointArea"]/div[2]/span/em') %>% 
+                           html_text())[1]
+  
+  newratings_before <- webpage %>% 
+    html_node(xpath = '//*[@id="beforePointArea"]/div[2]/div') %>% 
+    html_text(trim = T)
+  
+  newratings_before <- strsplit(x=newratings_before,split = "중")[[1]][2]
+  
+  sbox <- remdir$findElement(using = 'css selector',".tab02_off")
+  sbox$clickElement()
+  
+  url <- remdir$getCurrentUrl()[[1]]
+  webpage <- read_html(url)
+  newdistributor <- (webpage %>% html_nodes('.agency_name dd') %>% html_text(trim=T))[2]
+  newdistributor <- ifelse(is.na(newdistributor), (webpage %>% html_nodes('.agency_name dd') %>% html_text(trim = T)), newdistributor)
+  
+  title <- c(title, newtitle)
+  distributor <- c(distributor, newdistributor)
+  performance <- c(performance, newperformance)
+  int_bef <- c(interest_before, newinterest_before)
+  rat_bef <- c(ratings_before, newratings_before)
+  genre <- c(genre, newgenre)
+  release_date <- c(release_date, newrelease_date)
+  
+  time <- c(time, newtime)
+  mpaa_rating <- c(mpaa_rating, newmpaa_rating)
+  director <- c(director, newdirector)
+  contents <- c(contents, newcontents)
+  label <- c(label, newlabel)
+  print(paste(i, newtitle, newdistributor, newratings_before, newperformance, newrelease_date, newdirector, newmpaa_rating, newinterest_before))
+}
+```
+### (2) 영화 사이트 내에서의 필요 요소 변수 정의 및 데이터 추출
+###  i. 변수 정의
+#### 최초로 scraping한 변수
+* int_bef : 해당 영화에 작성된 개봉 전 댓글 개수
+* rat_bef : 해당 영화의 개봉 전 평점
+* num_bef : 감독이 해당 영화를 제작하기 전에 제작한 영화의 개수
+
+#### 함수 사용하여 얻어낸 변수
+* rel_int   : 해당 영화의 관객 수(performance)를 월별 총 관객 수로 나눈 값(변수변환)
+* per_dis   : 2005-2009년 해당 배급사의 관객수의 평균
+* per_month : 2005-2009 해당 월의 관객수의 평균
+ 
+#### for문을 이용하여 scraping한 변수
+ 
+* po_dir     : 감독의 역량(해당 영화의 감독의 전작들의 총 관객수를 전작들의 수로 나눈, 평균을 구한 값)
+* num_staff  : 영화에 참여한 제작진의 수
+* num_vid    : 해당 영화 사이트에 업로드된 동영상 수(예고편과 메이킹 영상 수. 마케팅 투자 정도를 확인) 
+* num_mactor : 해당 영화의 주연 수(영화 페이지에서 주연으로 쓰여 있는 개수)
+
+#### 아래 두 개의 변수는 위의 per_dis와 performance와의 상관도가 유의한 결과가 나와서 
+#### 새로이 추가한 변수들이다.
+* sd_dis	  : 각 배급사에 해당하는 관객수의 표준편차(standard deviation)
+* skew_dis  : 각 배급사에 해당하는 관객수의 왜도(skewness)
+
+
+
+### ii. 데이터 전처리(Preprocess of Data)
+### 데이터 획득 화면
+![<Movies Information in NAVER MOVIE>](C:/Users/kmlam/Documents/work/all (1)/image05.png)
+
+
+
+
+
+### csv 형태로 정리한 파일은 다음과 같다.
+![<Extracted Movies Information saved by csv file>](C:/Users/kmlam/Documents/work/all (1)/image02.png)
+
+
+### iii. 데이터 추출 시 사용 화면 및 코드 2
+### ⓵ po_dir(감독의 역량)
+### 해당 영화를 만든 감독이 이 영화 전에 제작한 영화가 평균적으로 몇 명의 관객수를 동원 했는지를 파악하기 위해 추출하였다.
+### 데이터 획득 화면
+![<Power of Director in NAVER MOVIE>](C:/Users/kmlam/Documents/work/all (1)/image06.png)
+
+```{r eval = FALSE}
+# po_dir
+beforeperformance<-c()
+beforenum<-c()
+index<-c()
+for(i in 1:length(title))
+{
+  
+  remdir$navigate("https://www.naver.com/")
+  
+  sbox <- remdir$findElement(using = 'css selector',".input_text") 
+  sbox$sendKeysToElement(list(title[i], key="enter"))
+  
+  sbox<-NA
+  try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")}) 
+  
+  if(is.na(sbox))
+  {
+    sbox<-remdir$findElement(using="css selector","strong.info_title a")
+    sbox$clickElement()
+  }
+  
+  url<-remdir$getCurrentUrl()[[1]]
+  webpage<-read_html(url)
+  date1<-gsub(webpage %>% html_nodes("#dss_h_movie_info_opendate_content") %>% html_text(),pattern = " 개봉",replacement = "")
+  date1<-gsub(date1,pattern = "\\.",replacement = "/")
+  date1<-as.Date(date1)
+  
+  # 이건 영화의 제목 링크를 저장
+  sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")
+  remdir$executeScript("arguments[0].setAttribute('target', arguments[1]);", list(sbox, ""))
+  sbox$clickElement()
+  
+  sbox<-remdir$findElement(using="xpath",'//*[@id="content"]/div[1]/div[2]/div[1]/dl/dd[2]/p/a')
+  sbox$clickElement() ##sbox라고 지정한 영화이름의 링크를 클릭
+  
+  
+  
+  sbox<-remdir$findElement(using="css selector",'.more')
+  sbox$clickElement()
+  
+  library(stringr)
+  url<-remdir$getCurrentUrl()[[1]]
+  direc.num <- as.numeric(str_extract(url, "\\-*\\d+\\.*\\d*"))
+
+  
+  url <- paste0("https://movie.naver.com/movie/bi/pi/filmoMission.nhn?peopleCode=", direc.num, "&year=0&totalCount=20")
+  
+  webpage <- read_html(url)
+  a <- webpage %>% html_nodes('.pilmo_tit a') %>% html_text()
+
+  ind<-which(  gsub(a,pattern = " ",replacement = "") == gsub(title[i],pattern = " ",replacement = "") )
+  
+  
+  
+  last<-length(a)
+  a <- a[ind+1:last]
+  a <- na.omit(a)
+  a<-as.vector(a)
+  b<- webpage %>% html_nodes('.pilmo_genre a') %>% html_text()
+  b <- as.numeric(str_extract(b, "\\-*\\d+\\.*\\d*"))
+  b <-na.omit(b)
+  b <- b[ind+1:length(b)]
+  b<-na.omit(b)
+  b<-as.vector(b)
+  if(length(b)!=length(a)) a<-a[-length(a)]
+    
+  if(length(a)==0)
+  {
+    newbeforeperformance<-0
+    newbeforenum<-0
+  }
+  
+  else{
+    getper<-c()
+    for(j in 1:length(a))
+    {
+      remdir$navigate("https://www.naver.com/")
+      sbox <- remdir$findElement(using = 'css selector',".input_text") 
+      sbox$sendKeysToElement(list(a[j], key="enter"))
+      
+       try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")},silent=T)
+
+        if(is.na(sbox)){
+                            sbox <- remdir$findElement(using = 'css selector',"strong.info_title a")
+                             sbox$clickElement()
+                        }
+      
+      url<-remdir$getCurrentUrl()[[1]]
+      webpage<-read_html(url)
+      newgetper<-webpage %>% 
+           html_node(xpath='//*[@id="_au_movie_info"]/div[2]/dl[2]/dd[4]/span') %>% 
+           html_text(trim=T)
+
+      newgetper<-ifelse(is.na(newgetper),
+                webpage %>% 
+                       html_node(xpath='//*[@id="_au_movie_info"]/div[2]/dl[2]/dd[3]/span') %>% 
+                       html_text(trim=T),
+                       newgetper)
+      
+      newgetper<-ifelse(is.na(newgetper),
+                         webpage %>% 
+                           html_node(xpath='//*[@id="_au_movie_info"]/div[2]/dl/dd[4]/span') %>% 
+                           html_text(trim=T),
+                         newgetper)
+      
+ 
+      newgetper<-ifelse(is.na(newgetper),
+                         webpage %>% 
+                           html_node(xpath='//*[@id="_au_movie_info"]/div[2]/dl/dd[3]/span') %>% 
+                           html_text(trim=T),
+                         newgetper)
+      newgetper<-gsub(pattern = ",",replacement = "",x=newgetper)
+      newgetper <- as.numeric(str_extract(newgetper, "\\-*\\d+\\.*\\d*"))
+ 
+      
+      
+        
+      date2<-NA
+      try({date2<-gsub(webpage %>% html_nodes("#dss_h_movie_info_opendate_content") %>% html_text(),pattern = " 개봉",replacement = "")})
+      
+      if((length(date2)==0))
+      {
+        newgetper<-NA
+      }
+      else{
+        
+        
+        date2<-as.numeric(substr(date2,1,4))
+
+
+        if(date2!=b[j])
+        {
+          newgetper<-NA
+        }
+      }
+
+      getper<-c(getper,newgetper)
+    }
+    newbeforeperformance<-mean(getper,na.rm=T)
+    newbeforenum<-length(na.omit(getper))
+  }
+ 
+  beforenum<-c(beforenum,newbeforenum)
+  beforeperformance<-c(beforeperformance,newbeforeperformance)
+  index<-c(index,i)
+  
+  print(paste(newbeforenum,newbeforeperformance,title[i],i,sep = "       "))
+}
+```
+
+### ⓶ num_staff(제작진 수)
+### 데이터 획득 화면
+
+![<Number of Staff in NAVER MOVIE>](C:/Users/kmlam/Documents/work/all (1)/image07.png)
+crawling 과정에서 영역을 지정한 후 해당 영역 안의 이름에 있는 하이퍼링크의 개수를 추출하였다.
+
+```{r eval = FALSE}
+# num_staff(for문)
+num_staff <- c()
+
+for(i in 1:length(title)){
+  
+  remdir$navigate("https://www.naver.com/")
+  
+  sbox <- remdir$findElement(using = 'css selector',".input_text")
+  sbox$sendKeysToElement(list(title[i], key="enter"))
+  
+  sbox<-NA
+  try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")})
+  
+  if(is.na(sbox))
+  {
+    sbox<-remdir$findElement(using="css selector","strong.info_title a")
+    sbox$clickElement()
+  }
+  
+  sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")
+  remdir$executeScript("arguments[0].setAttribute('target', arguments[1]);", list(sbox, ""))
+  sbox$clickElement()
+  
+  sbox <- remdir$findElement(using = 'xpath', '//*[@id="movieEndTabMenu"]/li[2]/a')
+  sbox$clickElement()
+  
+  sboxmore <- remdir$findElement(using = 'xpath', '//*[@id="staffMore"]')
+  sboxmore$clickElement()
+  
+  url<-remdir$getCurrentUrl()[[1]]
+  webpage<-read_html(url)
+  
+  hlink_data <- html_nodes(webpage,'td > span > a') %>% html_attr('href')
+  hlink_data <- na.omit(hlink_data)
+  a <- length(hlink_data)
+  num_staffs<-c(num_staff,a)
+  print(paste(i,"번째 스텝 수", a))
+}
+```
+
+### ⓷ num_vid(동영상 수)
+### 데이터 획득 화면
+![<Number of Videos in NAVER MOVIE>](C:/Users/kmlam/Documents/work/all (1)/image08.png)
+
+```{r eval = FALSE}
+# num_vid(for문)
+
+## 이것은 해당 영화의 올라온 예고편 개수를 가리킨다.
+numvid <- c()
+for(i in 1:length(title)){
+  
+  remdir$navigate("https://www.naver.com/")
+  
+  sbox <- remdir$findElement(using = 'css selector',".input_text")
+  sbox$sendKeysToElement(list(title[i], key="enter"))
+  
+  sbox <- NA
+  try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")})
+  
+  if(is.na(sbox)){
+    sbox<-remdir$findElement(using="css selector","strong.info_title a")
+    sbox$clickElement()
+  }
+  
+  sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")
+  remdir$executeScript("arguments[0].setAttribute('target', arguments[1]);", list(sbox, ""))
+  sbox$clickElement()
+  
+  sbox <- remdir$findElement(using = 'xpath', '//*[@id="movieEndTabMenu"]/li[4]/a') # '동영상' 버튼 위치 저장
+  sbox$clickElement()
+  
+  
+  pre.url <- remdir$getCurrentUrl()[[1]]
+  pre <- read_html(pre.url)
+  b <- pre %>% html_node(xpath = '//*[@id="content"]/div[1]/div[4]/div/div[2]/div[1]/div/div/span/em') %>% html_text() # 예고편 수
+  c <- pre %>% html_node(xpath = '//*[@id="content"]/div[1]/div[4]/div/div[2]/div[2]/div/div/span/em') %>% html_text() # 메이킹 수
+  
+  b <- ifelse(is.na(b), 0, b)
+  c <- ifelse(is.na(c), 0, c)
+  
+  numvid <- c(numvid,as.numeric(b) + as.numeric(c))
+  print(paste(as.numeric(b) + as.numeric(c),i,sep="      "))
+}
+
+
+```
+
+### ⓸ num_mactor(주연배우 수 )
+### 데이터 획득 화면
+![<Number of movie main actors in NAVER MOVIE>](C:/Users/kmlam/Documents/work/all (1)/image09.png)
+
+
+```{r eval = FALSE}
+# num_mactor(for문)
+numactor <- list()
+
+for(i in 1:length(title)){
+  remdir$navigate("https://www.naver.com/")
+  
+  sbox <- remdir$findElement(using = 'css selector',".input_text")
+  sbox$sendKeysToElement(list(title[i], key="enter"))
+  
+  sbox <- NA
+  try({sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")})
+  
+  if(is.na(sbox)){
+    sbox<-remdir$findElement(using="css selector","strong.info_title a")
+    sbox$clickElement()
+  }
+  
+  sbox <- remdir$findElement(using = 'css selector',".sh_movie_link")
+  remdir$executeScript("arguments[0].setAttribute('target', arguments[1]);", list(sbox, ""))
+  sbox$clickElement()
+  
+  sbox <- remdir$findElement(using = 'xpath', '//*[@id="movieEndTabMenu"]/li[2]/a') 
+  sbox$clickElement()
+  
+  a.url <- remdir$getCurrentUrl()[[1]]
+  act <- read_html(a.url)
+  
+  d <- act %>% html_nodes('.in_prt > em') %>% html_text()
+  num_main_actor <- sum(as.numeric(d == "주연"))
+  
+  numactor[[length(numactor)+1]] <- num_main_actor
+  print(paste(i,"번째 주연배우 수  = ", num_main_actor))
+}
+
+```
+
+
+### ii. 표본 개수
+위키피디아(Wikipedia)에서 얻은 한국 영화 : 849개
+
+
+### iii. 독립변수(x)와 종속변수(y) 설정
+종속변수(Y) = performance <br>
+독립변수(X) = rel_int, per_month, per_dis, skew_dis, sd_dis, time, num_vid
+
+## **3. 첫 번째 크롤링 이후**
+```{r echo = FALSE}
+library(corrplot)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r echo = FALSE}
+M <- cor(movies[ , c(6,7,8,13,24,33)], use = "complete.obs")
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M,
+         method = "color",
+         col = col(200),
+        type = "upper",
+        number.cex = .7,
+        addCoef.col = "black",
+        tl.col = "black",
+        tl.srt = 90,
+        sig.level = 0.01,
+        insig = "blank",
+        diag = FALSE)
+```
+
+#1. int_bef의 변환
+```{r echo=FALSE}
+plot(movies$int_bef,movies$performance,xlab="int_bef",ylab="performance")
+cor(movies$int_bef,movies$performance)
+```
+
+
+
+```{r eval=FALSE}
+movies$rel_int<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  time<-movies$release_time[i]
+  
+  a<-sum(movies[abs(as.numeric(movies$release_time-time))<=25,]$int_bef) ##해당 영화의 개봉일과 25일 차이가 나는 영화의 int_bef를 sum한다.
+  movies$rel_int[i]<-movies$int_bef[i]/a   ##이렇게 구한 sum을 int_bef에서 나눔으로써 rel_int란 변수를 생성한다
+}
+```
+
+
+
+```{r echo=FALSE}
+plot(movies$rel_int,movies$performance,xlab="rel_int",ylab="performance") 
+cor(movies$rel_int,movies$performance)
+
+```
+
+#2. distributor
+
+영화의 흥행을 예측하는데 배급사가 큰 도움을 줄 것으로 보인다.
+```{r}
+t<-names(sort(table(movies1$distributor),decreasing=T))[1:10]
+t1<-movies1[movies1$distributor %in% t,]
+t1$distributor<-as.character(t1$distributor)
+boxplot(t1$performance~t1$distributor,main="2005~2009")
+boxplot(movies$performance~movies$distributor,main="2005~2009")
+```
+
+해당 영화의 배급사가 2005부터 2009년까지 맡은 영화의 평균 관객수를 per_dis에 저장한다.
+```{r eval=FALSE}
+movies$per_dis<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  movies$per_dis[i]<-mean((movies1 %>% filter(distributor==movies$distributor[i]))$performance) 
+}
+
+```
+
+
+```{r echo=FALSE}
+plot(movies$per_dis,movies$performance,xlab="per_dis",ylab="performance")
+cor(movies$per_dis,movies$performance)
+```
+
+#3. rat_bef
+rat_bef와 performance간의 상관관계는 너무 작다
+==> rat_bef는 변수에서 제거하자.
+
+```{r echo=FALSE}
+plot(movies$rat_bef,movies$performance,xlab="rat_bef",ylab="performance")
+cor(movies$rat_bef,movies$performance)##rat_bef와 performance간의 상관관계==>이건 너무 작다. ==> rat_bef는 거른다
+##참고로 rat_bef는 개봉전 관객의 평점
+```
+
+#4. release_month의 변환
+
+
+```{r}
+boxplot(movies1$performance~movies1$release_month,main="2005~2009",xlab="release_month")
+```
+
+12개의 달에 대해 performance가 차이가 있는지 검정하자.
+
+```{r}
+fligner.test(performance ~ release_month, data = movies1)
+```
+
+등분산성 가정이 깨진다.
+
+
+
+```{r}
+analysis <- oneway.test(performance ~ release_month, 
+                            data      = movies, 
+                            var.equal = FALSE)
+```
+p_value가 엄청 작다.
+==>월별 관객수의 평균은 통계적으로 유의하게 차이가 있다고 결론
+
+
+해당 영화가 개봉한 월에 2005년부터 2009년까지 개봉한 영화의 평균 관객수를 per_month에
+넣는
+```{r eval=FALSE}
+
+movies$per_month<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  movies$per_month[i]<-mean((movies1 %>% filter(release_month==movies$release_month[i]))$performance)
+
+}
+```
+
+
+
+```{r}
+plot(movies$per_month,movies$performance,xlab="per_month",ylab="performance")
+cor(movies$per_month,movies$performance)
+
+```
+#5. 첫 번째 모델 적합
+
+
+
+결정계수가 39프로밖에 안 나온다
+```{r}
+
+model1<-lm(performance~per_month+rel_int+per_dis+rat_mpaa,data=movies)
+
+model1<-step(model1,direction="both")
+
+summary(model1)   ##결정계수가 39프로밖에 안 나온다!! 망했다
+
+movies$pred<-predict(model1,movies)
+plot(movies$pred,movies$performance,xlim=c(0,6000000),ylim=c(0,6000000),xlab="에측치",ylab="실제값")
+abline(0,1)
+```
+
+
+예측이 잘 안 되는 영화를 한번 보자.
+pred는 100,0000보다 높은데(즉 100,0000보다 높게 예측됬는데) 실제론 10,0000 관객도 안 된 영화의 title을 부르자
+```{r}
+(movies %>% filter(pred>1000000,performance<100000))$title
+```
+
+이 영화들의 공통점은 촬영에 참여한 스탭 수가 적다는 것이었다.
+
+
+
+
+![<Movies Information saved by csv file>](C:/Users/kmlam/Documents/work/all (1)/like.png)
+
+이 사진은 영화 페어 러브의 스텝 목록이다.
+
+
+그리고 감독의 역량을 표현하는 지표도 만들자.
+해당 영화를 만들기 전에 감독이 만든 영화의 평균 관객수를 뽑아내 보자.
+
+그리고 영화 개봉 전 naver 영화에 올라와 있는 에고편 수도 좋은 정보가 될 수 있을 것이다
+왜냐하면, 예고편의 수도 어떻게 보면 해당 배급사나 제작사의 홍보능력을 평가할 수 있기 때문이다.
+
+혹시나 주연의 수도 영화의 흥행척도가 될 있지 않을까?
+
+
+
+## **4. 두 번째 크롤링 이후**
+
+#1. po_dir의 결측치 제거
+
+해당 영화를 만들기 전에 아무 영화도 만들지 않은 신인 감독일 경우,
+과거 데이터가 없어서 문제가 생긴다.
+그래서 2005년부터 2009년까지, 신인감독의 성적을 참고해서 결측치를 제거했다
+```{r}
+summary((movies1 %>% filter(num_bef==0))$performance)
+plot(density((movies1 %>% filter(num_bef==0))$performance),xlim=c(0,200000))
+
+```
+신인감독의 흥행성적의 분포가 심하게 right skewed되어 있다.
+평균보다, 중앙값이 이 분포를 더 잘 대표하겠다고 생각하게 된다.
+
+이전에 아예 영화를 만들지 않은 신인감독은, 2005년부터 2009년까지 신인감독의 영화흥행성적의 중앙값을 사용한다.
+```{r}
+movies$po_dir<-ifelse(movies$num_bef==0,median((movies1 %>% filter(num_bef==0))$performance),movies$po_dir)
+
+```
+
+#2. num_vid와 num_actor
+```{r}
+plot(movies$num_vid,movies$performance,xlab="num_vid",ylab="performance")
+cor(movies$num_vid,movies$performance)
+
+plot(movies$num_actor,movies$performance,xlab="num_actor",ylab="performance")
+cor(movies$num_actor,movies$performance)
+```
+num_vid는 채택하고, num_actor는 버리자.
+
+#3. 교호작용 고려
+
+po_dir와 num_vid를 추가해서 선형 회귀모형을 적용해도, 상관계수가 41프로밖에 안 되었다.
+
+
+
+
+i) per_dis와 num_staff의 교호작용
+```{r echo=FALSE}
+a<-movies %>% filter(movies$per_dis<quantile(movies$per_dis)[2])
+b<-movies %>% filter(movies$per_dis>quantile(movies$per_dis)[4])
+par(mfrow=c(1,2))
+plot(a$num_staff,a$performance,xlim=c(0,700),ylim=c(0,15000000),
+     main="per_dis가 1사분위수 밑일 때")
+a1<-lm(a$performance~a$num_staff)
+abline(a1)
+
+plot(b$num_staff,b$performance,xlim=c(0,700),ylim=c(0,15000000),
+     main="per_dis가 3사분위수 위일 때")
+b1<-lm(b$performance~b$num_staff)
+abline(b1)
+```
+
+
+
+ii) per_dis와 per_month의 교호작용
+```{r echo=FALSE}
+a<-movies %>% filter(movies$per_dis<quantile(movies$per_dis)[2])
+b<-movies %>% filter(movies$per_dis>quantile(movies$per_dis)[4])
+
+par(mfrow=c(1,2))
+plot(a$per_month,a$performance,xlim=c(0,1200000),ylim=c(0,10000000),
+     main="per_dis가 1사분위수 밑일 때")
+a1<-lm(a$performance~a$per_month)
+abline(a1)
+
+plot(b$per_month,b$performance,xlim=c(0,1200000),ylim=c(0,10000000),
+     main="per_dis가 3사분위수 위일 때")
+b1<-lm(b$performance~b$per_month)
+abline(b1)
+
+
+```
+
+
+
+
+iii) per_dis와 num_vid의 교호작용
+```{r echo=FALSE}
+a<-movies %>% filter(movies$per_dis<quantile(movies$per_dis)[2])
+b<-movies %>% filter(movies$per_dis>quantile(movies$per_dis)[4])
+
+par(mfrow=c(1,2))
+plot(a$num_vid,a$performance,xlim=c(0,30),ylim=c(0,10000000),
+     main="per_dis가 1사분위수 밑일 때")
+a1<-lm(a$performance~a$num_vid)
+abline(a1)
+
+plot(b$num_vid,b$performance,xlim=c(0,30),ylim=c(0,10000000),
+     main="per_dis가 3사분위수 위일 때")
+b1<-lm(b$performance~b$num_vid)
+abline(b1)
+
+
+```
+
+
+
+
+iiii) rel_int, time의 교호작용
+
+```{r echo=FALSE}
+a<-movies %>% filter(movies$rel_int<quantile(movies$rel_int)[2])
+b<-movies %>% filter(movies$rel_int>quantile(movies$rel_int)[4])
+
+par(mfrow=c(1,2))
+plot(a$time,a$performance,xlim=c(0,160),ylim=c(0,10000000),
+     main="rel_int가 1사분위수 밑일 때")
+a1<-lm(a$performance~a$time)
+abline(a1)
+
+plot(b$time,b$performance,xlim=c(0,160),ylim=c(0,10000000),
+     main="rel_int가 3사분위수 위일 때")
+b1<-lm(b$performance~b$time)
+abline(b1)
+par(mfrow=c(1,1))
+```
+
+
+
+결론: 교호작용이 있는 변수가 진짜 많다.
+
+그리고, 어떤 한 변수가 엄청 작으면, 아무리 다른 변수가 크더라도 관객수는 적다.
+이렇게 해도,,,
+```{r results = "hide"}
+getavgRsquareLM<-function(num)
+{
+  Rsquare<-c()
+  for(i in 1:num)
+  {
+    index<-sample(1:nrow(movies),500)
+
+    moviestrain<-movies[index,]
+    moviestest<-movies[-index,]
+    model1<-lm(performance~per_dis:num_staff+
+                           per_dis:per_month+
+                           per_dis:num_vid+
+                           rel_int:time
+                          ,data=moviestrain)
+    model1<-step(model1,direction="both")
+    moviestest$pred<-(predict(object=model1,moviestest))
+    Rsquare<-c(Rsquare,cor(moviestest$pred,moviestest$performance)^2)
+  }
+  return(Rsquare)
+}
+
+result<-getavgRsquareLM(1000)
+
+```
+
+평균적으로 48프로정도 나온다,,
+```{r}
+summary(result)
+```
+
+
+boxplot에서 알 수 있듯이 2005년부터 2009년까지 배급사별 관객수 분포는 거의 다 대칭이지 않은 것 같다. 그렇다면, 이 분포를 잘 표현하기 위해선 어떤 지표를 더 사용하면 좋을까?
+
+```{r}
+t<-names(sort(table(movies1$distributor),decreasing=T))[1:10]
+t1<-movies1[movies1$distributor %in% t,]
+t1$distributor<-as.character(t1$distributor)
+boxplot(t1$performance~t1$distributor,main="2005~2009")
+```
+
+skewness와 표준편차를 활용하자.
+```{r}
+library(moments)
+movies$skew_dis<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  movies$skew_dis[i]<-skewness((movies1 %>% filter(distributor==movies$distributor[i]))$performance)
+}
+
+movies$sd_dis<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  movies$sd_dis[i]<-sd((movies1 %>% filter(distributor==movies$distributor[i]))$performance)
+}
+
+movies$per_dis1<-1:nrow(movies)
+for(i in 1:nrow(movies))
+{
+  movies$per_dis1[i]<-median((movies1 %>% filter(distributor==movies$distributor[i]))$performance)
+}
+```
+
+
+#4. 모델 적합
+```{r}
+model1<-lm(performance~skewdis:per_dis+
+                           num_staff:sddis1+
+                           num_staff:per_dis+
+                           per_dis:num_vid+
+                           rel_int:time:per_month
+                          ,data=movies)
+model1<-step(model1,direction="both")
+vif(model1)
+par(mfrow=c(2,2))
+plot(model1)
+par(mfrow=c(1,1))
+
+```
+
+
+
+```{r results="hide"}
+getavgRsquareLM<-function(num)
+{
+  Rsquare<-c()
+  for(i in 1:num)
+  {
+    index<-sample(1:nrow(movies),500)
+
+    moviestrain<-movies[index,]
+    moviestest<-movies[-index,]
+    model1<-lm(performance~skewdis:per_dis+
+                           num_staff:sddis1+
+                           num_staff:per_dis+
+                           per_dis:num_vid+
+                           rel_int:time:per_month
+                          ,data=moviestrain)
+    model1<-step(model1,direction="both")
+    moviestest$pred<-(predict(object=model1,moviestest))
+    Rsquare<-c(Rsquare,cor(moviestest$pred,moviestest$performance)^2)
+  }
+  return(Rsquare)
+}
+result<-getavgRsquareLM(1000)
+```
+
+결정계수의 평균은 약 51프로 정도로 올랐다.
+```{r}
+summary(result)
+```
+
+
+
+## **5. 앙상블 모델의 적용**
+```{r echo=FALSE}
+library(neuralnet)
+library(dplyr)
+library(e1071)
+library(randomForest)
+
+
+normalizedataframe<-function(x)
+{
+  y<-x
+  for(i in 1:length(x))
+  {
+    y[,i]<-(y[,i]-min(y[,i]))/(max(y[,i])-min(y[,i]))
+  }
+  return(y)
+}
+
+inversenormalization<-function(x,min,max)
+{
+  return(x*(max-min)+min)
+}
+
+```
+
+
+
+1. RF(Random Forest)
+
+랜덤 포레스트 함수를 하기 전에 예측력을 키울 수 있는 최적의 parameter를 찾아보자.
+(mtry)
+```{r}
+
+oob.err<-rep(0,7)
+test.err<-rep(0,7)
+
+a<-movies[,c("po_dir","num_vid","per_month","time","per_dis1","rel_int","num_staff","performance")]
+
+for(i in 1:20)
+{
+  index<-sample(1:nrow(a),500)
+  atrain<-a[index,]
+  atest<-a[-index,]
+  
+  
+  for(mtry in 1:7) 
+  {
+    rf=randomForest(performance ~ . , data =a , subset = index,mtry=mtry,ntree=400) 
+    oob.err[mtry] = oob.err[mtry]+rf$mse[400] 
+    
+    pred<-predict(rf,movies[-index,]) #Predictions on Test Set for each Tree
+    test.err[mtry]= test.err[mtry]+with(a[-index,], mean( (performance - pred)^2)) 
+    
+    cat(mtry," ") 
+  }
+}
+oob.err<-oob.err/20
+test.err<-test.err/20
+matplot(1:mtry,
+        cbind(oob.err,test.err),
+        pch=19,
+        col=c("red","blue"),
+        type="b",
+        ylab="Mean Squared Error",
+        xlab="Number of Predictors Considered at each Split")
+```
+mtry라는 파라미터의 최적값을 찾아준다.
+
+
+
+2. SVM(Support Vector Machine)
+SVM도 마찬가지로 최적의 파라미터를 찾아보자.
+```{r warning = FALSE}
+
+tuneResult <- tune(svm, performance~sddis1+num_vid+per_month+time+per_dis1+rel_int+num_staff,data = movies,ranges = list(epsilon = seq(0,1,0.1), cost = 2^(2:9))
+)
+
+
+```
+epsilon과 cost라는 파라미터의 최적의 값을 찾아준다.
+
+plot(tuneResult)
+
+
+
+3. 다중회귀모형, 랜덤포레스트, SVM을 섞은 혼합 모델 생성
+```{r results = "hide"}
+getavgRsquaretotal<-function(num,df)
+{
+  res<-c()
+  library(neuralnet)
+  library(dplyr)
+  library(e1071)
+  library(randomForest)
+  lmpred<-df[,1]
+  svmpred<-df[,2]
+  rfpred<-df[,3]
+  real<-df[,4]
+  for(i in 1:num)
+  {
+    index<-sample(1:nrow(movies),500)
+
+    moviestrain<-movies[index,]
+    moviestest<-movies[-index,]
+    predlm<-0
+    predsvm<-0
+    predrf<-0
+    ##Linear Regression
+    model1<-lm(performance~skewdis:per_dis+num_staff:sddis1+num_staff:per_dis+per_dis:num_vid+rel_int:time:per_month
+              ,data=moviestrain)
+    predlm<-predict(object=model1,moviestest)
+    
+    M<-max(movies$performance)
+    m<-min(movies$performance)
+    
+    a<-normalizedataframe(movies[,c("sddis1","num_vid","per_month","time","per_dis1","rel_int","num_staff","performance")])
+    atrain<-a[index,]
+    atest<-a[-index,]
+    model <- svm(performance~sddis1+num_vid+per_month+time+per_dis1+rel_int+num_staff,atrain,epsilon=0.13,cost=4)
+    pre<-predict(model,atest)
+    pre<-inversenormalization(x=pre,min = m,max = M)
+    predsvm<-pre
+
+    
+    pre<-0
+    a<-normalizedataframe(movies[,c("num_vid","per_month","time","per_dis","rel_int","num_staff","performance")])
+    atrain<-a[index,]
+    atest<-a[-index,]
+    rf<-randomForest(performance~.,data=a,subset=index,mtry=2,ntree=1000)
+    pre<-predict(rf,a[-index,]) #Predictions on Test Set for each Tree
+    pre<-inversenormalization(x=pre,min = m,max = M)    
+    predrf<-pre
+    
+    predfinal<-(predlm+predsvm+predrf)/3
+    lmpred<-c(lmpred,predlm)
+    svmpred<-c(svmpred,predsvm)
+    rfpred<-c(rfpred,predrf)
+    real<-c(real,moviestest$performance)
+    res<-c(res,cor(predfinal,moviestest$performance)^2)
+    
+    print(paste(round(cor(predfinal,moviestest$performance)^2,digits=3),round(mean(res),digits=3),sep="이고 평균은 "))
+  }
+  return(list(res,data.frame(lmpred=lmpred,svmpred=svmpred,rfpred=rfpred,real=real)))
+}
+
+df<-data.frame(lmpred=c(0),svmpred=c(0),rfpred=c(0),real=c(0))
+df<-getavgRsquaretotal(200,df)
+
+```
+
+```{r}
+summary(df[[1]])
+```
+
+
+## **6. Conclusion**
+```{r echo=FALSE}    
+index<-sample(1:nrow(movies),500)
+
+moviestrain<-movies[index,]
+moviestest<-movies[-index,]
+predlm<-0
+predsvm<-0
+predrf<-0
+##Linear Regression
+model1<-lm(performance~skewdis:per_dis+num_staff:sddis1+num_staff:per_dis+per_dis:num_vid+rel_int:time:per_month
+          ,data=moviestrain)
+  predlm<-predict(object=model1,moviestest)
+    
+    M<-max(movies$performance)
+    m<-min(movies$performance)
+    
+    a<-normalizedataframe(movies[,c("sddis1","num_vid","per_month","time","per_dis1","rel_int","num_staff","performance")])
+    atrain<-a[index,]
+    atest<-a[-index,]
+    model <- svm(performance~sddis1+num_vid+per_month+time+per_dis1+rel_int+num_staff,atrain,epsilon=0.13,cost=4)
+    pre<-predict(model,atest)
+    pre<-inversenormalization(x=pre,min = m,max = M)
+    predsvm<-pre
+
+    
+    pre<-0
+    a<-normalizedataframe(movies[,c("num_vid","per_month","time","per_dis","rel_int","num_staff","performance")])
+    atrain<-a[index,]
+    atest<-a[-index,]
+    rf<-randomForest(performance~.,data=a,subset=index,mtry=2,ntree=1000)
+    pre<-predict(rf,a[-index,]) #Predictions on Test Set for each Tree
+    pre<-inversenormalization(x=pre,min = m,max = M)    
+    predrf<-pre
+    
+    predfinal<-(predlm+predsvm+predrf)/3
+    plot(predfinal,movies[-index,]$performance,ylab="performance")
+    abline(0,1)
+```
+
+최종적으로, training set에서 적합한 앙상블 모델의 test 데이터에서 예측치의 결정계수는 평균적으로 57프로 정도 되었다.
+
+
+
+
